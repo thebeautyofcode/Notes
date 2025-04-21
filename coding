@@ -1,1 +1,374 @@
 
+Here is the complete and updated backend source code for Warehouse (Day 10) and Inventory (Day 6) modules. This ensures:
+
+Inventory cannot be created unless the warehouseLocation exists in the Warehouse table.
+
+Clean code with proper service, DTO, controller, and validation.
+
+All backend logic matches your Liquibase and domain rules.
+
+
+
+---
+
+1. Backend Structure
+
+src/
+└── main/
+    └── java/
+        └── org/
+            └── policy/
+                ├── controller/
+                │   ├── InventoryController.java
+                │   └── WarehouseController.java
+                ├── dto/
+                │   ├── InventoryDto.java
+                │   └── WarehouseDto.java
+                ├── entity/
+                │   ├── Goods.java
+                │   ├── Inventory.java
+                │   └── Warehouse.java
+                ├── repository/
+                │   ├── GoodsRepository.java
+                │   ├── InventoryRepository.java
+                │   └── WarehouseRepository.java
+                └── service/
+                    └── NonImpl/
+                        ├── InventoryService.java
+                        └── WarehouseService.java
+
+
+---
+
+2. Entity: Warehouse
+
+package org.policy.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+@Entity
+@Table(name = "warehouse")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class Warehouse {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String name;
+
+    @Column(unique = true)
+    private String location;
+}
+
+
+---
+
+3. DTO: WarehouseDto
+
+package org.policy.dto;
+
+import lombok.*;
+
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class WarehouseDto {
+    private Long id;
+    private String name;
+    private String location;
+}
+
+
+---
+
+4. Repository: WarehouseRepository
+
+package org.policy.repository;
+
+import org.policy.entity.Warehouse;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface WarehouseRepository extends JpaRepository<Warehouse, Long> {
+    Optional<Warehouse> findByLocation(String location);
+}
+
+
+---
+
+5. Service: WarehouseService
+
+package org.policy.service.NonImpl;
+
+import lombok.RequiredArgsConstructor;
+import org.policy.dto.WarehouseDto;
+import org.policy.entity.Warehouse;
+import org.policy.repository.WarehouseRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class WarehouseService {
+
+    private final WarehouseRepository warehouseRepository;
+
+    public WarehouseDto create(WarehouseDto dto) {
+        Warehouse warehouse = new Warehouse();
+        warehouse.setName(dto.getName());
+        warehouse.setLocation(dto.getLocation());
+        warehouseRepository.save(warehouse);
+        return dto;
+    }
+
+    public List<WarehouseDto> getAll() {
+        return warehouseRepository.findAll()
+                .stream()
+                .map(w -> new WarehouseDto(w.getId(), w.getName(), w.getLocation()))
+                .collect(Collectors.toList());
+    }
+}
+
+
+---
+
+6. Controller: WarehouseController
+
+package org.policy.controller;
+
+import lombok.RequiredArgsConstructor;
+import org.policy.dto.WarehouseDto;
+import org.policy.service.NonImpl.WarehouseService;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/warehouse")
+@RequiredArgsConstructor
+public class WarehouseController {
+
+    private final WarehouseService warehouseService;
+
+    @PostMapping("/create")
+    public WarehouseDto create(@RequestBody WarehouseDto dto) {
+        return warehouseService.create(dto);
+    }
+
+    @GetMapping("/all")
+    public List<WarehouseDto> getAll() {
+        return warehouseService.getAll();
+    }
+}
+
+
+---
+
+7. Entity: Inventory
+
+package org.policy.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.time.LocalDate;
+
+@Entity
+@Table(name = "inventory")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class Inventory {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private int quantity;
+
+    private LocalDate dateAdded;
+
+    @Column(name = "warehouse_location")
+    private String warehouseLocation;
+
+    @OneToOne
+    @JoinColumn(name = "goods_id", unique = true)
+    private Goods goods;
+
+    @ManyToOne
+    @JoinColumn(name = "warehouse_id")
+    private Warehouse warehouse;
+}
+
+
+---
+
+8. DTO: InventoryDto
+
+package org.policy.dto;
+
+import lombok.*;
+
+import java.time.LocalDate;
+
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class InventoryDto {
+
+    private Long goodsId;
+    private String warehouseLocation;
+    private int quantity;
+    private LocalDate dateAdded;
+}
+
+
+---
+
+9. Repository: InventoryRepository
+
+package org.policy.repository;
+
+import org.policy.entity.Inventory;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface InventoryRepository extends JpaRepository<Inventory, Long> {
+    Optional<Inventory> findByGoodsId(Long goodsId);
+}
+
+
+---
+
+10. Service: InventoryService
+
+package org.policy.service.NonImpl;
+
+import lombok.RequiredArgsConstructor;
+import org.policy.dto.InventoryDto;
+import org.policy.entity.Goods;
+import org.policy.entity.Inventory;
+import org.policy.entity.Warehouse;
+import org.policy.entity.enums.GoodsStatus;
+import org.policy.repository.GoodsRepository;
+import org.policy.repository.InventoryRepository;
+import org.policy.repository.WarehouseRepository;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class InventoryService {
+
+    private final InventoryRepository inventoryRepository;
+    private final GoodsRepository goodsRepository;
+    private final WarehouseRepository warehouseRepository;
+
+    public InventoryDto addToInventory(InventoryDto dto) {
+        Goods goods = goodsRepository.findById(dto.getGoodsId())
+                .orElseThrow(() -> new RuntimeException("Goods not found"));
+
+        if (!GoodsStatus.APPROVED.equals(goods.getStatus())) {
+            throw new RuntimeException("Goods must be approved before adding to inventory.");
+        }
+
+        if (inventoryRepository.findByGoodsId(dto.getGoodsId()).isPresent()) {
+            throw new RuntimeException("This good is already in the inventory.");
+        }
+
+        Warehouse warehouse = warehouseRepository.findByLocation(dto.getWarehouseLocation())
+                .orElseThrow(() -> new RuntimeException("Warehouse location not found"));
+
+        Inventory inventory = new Inventory();
+        inventory.setGoods(goods);
+        inventory.setQuantity(goods.getQuantity());
+        inventory.setWarehouseLocation(warehouse.getLocation());
+        inventory.setWarehouse(warehouse);
+        inventory.setDateAdded(LocalDate.now());
+
+        inventoryRepository.save(inventory);
+
+        return new InventoryDto(goods.getId(), warehouse.getLocation(), inventory.getQuantity(), inventory.getDateAdded());
+    }
+
+    public List<InventoryDto> getAll() {
+        return inventoryRepository.findAll()
+                .stream()
+                .map(i -> new InventoryDto(
+                        i.getGoods().getId(),
+                        i.getWarehouseLocation(),
+                        i.getQuantity(),
+                        i.getDateAdded()
+                ))
+                .collect(Collectors.toList());
+    }
+}
+
+
+---
+
+11. Controller: InventoryController
+
+package org.policy.controller;
+
+import lombok.RequiredArgsConstructor;
+import org.policy.dto.InventoryDto;
+import org.policy.service.NonImpl.InventoryService;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/inventory")
+@RequiredArgsConstructor
+public class InventoryController {
+
+    private final InventoryService inventoryService;
+
+    @PostMapping("/add")
+    public InventoryDto addToInventory(@RequestBody InventoryDto dto) {
+        return inventoryService.addToInventory(dto);
+    }
+
+    @GetMapping("/all")
+    public List<InventoryDto> getAllInventory() {
+        return inventoryService.getAll();
+    }
+}
+
+
+---
+
+✅ Sample JSON to Test Inventory API
+
+{
+  "goodsId": 1,
+  "warehouseLocation": "Delhi-Central",
+  "quantity": 20,
+  "dateAdded": "2025-04-21"
+}
+
+> Make sure the warehouseLocation ("Delhi-Central") already exists in your warehouse table.
+
+
+
+
+---
+
+Let me know if you need Liquibase changelog for Goods, GoodsStatus enum, or integration tests!
+
